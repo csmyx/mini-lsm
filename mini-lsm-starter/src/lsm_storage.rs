@@ -283,13 +283,22 @@ impl LsmStorageInner {
         let opt = state.memtable.get(_key);
         if let Some(bytes) = opt {
             if !bytes.is_empty() {
-                Ok(Some(bytes))
+                return Ok(Some(bytes));
             } else {
-                Ok(None)
+                return Ok(None);
             }
-        } else {
-            Ok(None)
         }
+        for imm in state.imm_memtables.iter() {
+            let opt = imm.get(_key);
+            if let Some(bytes) = opt {
+                if !bytes.is_empty() {
+                    return Ok(Some(bytes));
+                } else {
+                    return Ok(None);
+                }
+            }
+        }
+        Ok(None)
     }
 
     /// Write a batch of data into the storage. Implement in week 2 day 7.
