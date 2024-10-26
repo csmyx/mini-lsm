@@ -310,7 +310,7 @@ impl LsmStorageInner {
     pub fn put(&self, _key: &[u8], _value: &[u8]) -> Result<()> {
         let size;
         {
-            let state: parking_lot::lock_api::RwLockReadGuard<'_, parking_lot::RawRwLock, Arc<LsmStorageState>> = self.state.read();
+            let state = self.state.read();
             state.memtable.put(_key, _value)?;
             size = state.memtable.approximate_size();
         }
