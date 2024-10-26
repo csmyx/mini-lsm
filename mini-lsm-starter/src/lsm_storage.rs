@@ -299,8 +299,26 @@ impl LsmStorageInner {
 
     /// Put a key-value pair into the storage by writing into the current memtable.
     pub fn put(&self, _key: &[u8], _value: &[u8]) -> Result<()> {
-        let state = self.state.read();
-        state.memtable.put(_key, _value)
+        let size;
+        {
+            let state: parking_lot::lock_api::RwLockReadGuard<'_, parking_lot::RawRwLock, Arc<LsmStorageState>> = self.state.read();
+            state.memtable.put(_key, _value)?;
+            size = state.memtable.approximate_size();
+        }
+        self.try_freeze(size)
+    }
+
+    fn try_freeze(&self, size: usize) -> Result<()> {
+        if size >= self.options.target_sst_size {
+            let state_lock = self.state_lock.lock();
+            let guard= self.state.read();
+            // the memtable could have already been frozen, check again to ensure we really need to freeze
+            if guard.memtable.approximate_size() >= self.options.target_sst_size {
+                drop(guard);
+                self.force_freeze_memtable(&state_lock)?;
+            }
+        }
+        Ok(())
     }
 
     /// Remove a key from the storage by writing an empty value.
