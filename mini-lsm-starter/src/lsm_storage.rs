@@ -330,7 +330,20 @@ impl LsmStorageInner {
 
     /// Force freeze the current memtable to an immutable memtable
     pub fn force_freeze_memtable(&self, _state_lock_observer: &MutexGuard<'_, ()>) -> Result<()> {
-        unimplemented!()
+        // move the memtable into the immmutable_memtable vector as it's first element, and set the memtable to a new empty Memtable, how to do it
+        let mut state = self.state.write();
+        let mut new_inner;
+        {
+            // new_inner = state.deref().deref().clone();
+            // new_inner = state.deref().as_ref().clone();
+            new_inner = state.as_ref().clone();
+            let id = self.next_sst_id();
+            let old_memtable = std::mem::replace(&mut new_inner.memtable, Arc::new(MemTable::create(id)));
+            // Insert the old memtable into the immutable memtables at the beginning
+            new_inner.imm_memtables.insert(0, old_memtable);
+        }
+        *state = Arc::new(new_inner);
+        Ok(())
     }
 
     /// Force flush the earliest-created immutable memtable to disk
