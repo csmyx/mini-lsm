@@ -48,6 +48,7 @@ impl<I: StorageIterator> MergeIterator<I> {
     pub fn create(iters: Vec<Box<I>>) -> Self {
         let mut iters = iters
             .into_iter()
+            .filter(|iter| iter.is_valid())
             .enumerate()
             .map(|(idx, iter)| HeapWrapper(idx, iter))
             .collect::<BinaryHeap<_>>();
