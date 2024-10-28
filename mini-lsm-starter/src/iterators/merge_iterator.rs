@@ -78,7 +78,7 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
     }
 
     fn next(&mut self) -> Result<()> {
-        let current= self.current.as_mut().unwrap();
+        let current = self.current.as_mut().unwrap();
 
         // Remove the stale duplicate key in other iterators
         while let Some(mut inner_iter) = self.iters.peek_mut() {

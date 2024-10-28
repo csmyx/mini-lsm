@@ -321,7 +321,7 @@ impl LsmStorageInner {
     fn try_freeze(&self, size: usize) -> Result<()> {
         if size >= self.options.target_sst_size {
             let state_lock = self.state_lock.lock();
-            let guard= self.state.read();
+            let guard = self.state.read();
             // the memtable could have already been frozen, check again to ensure we really need to freeze
             if guard.memtable.approximate_size() >= self.options.target_sst_size {
                 drop(guard);
@@ -366,7 +366,8 @@ impl LsmStorageInner {
             // new_inner = state.deref().as_ref().clone();
             new_inner = state.as_ref().clone();
             let id = self.next_sst_id();
-            let old_memtable = std::mem::replace(&mut new_inner.memtable, Arc::new(MemTable::create(id)));
+            let old_memtable =
+                std::mem::replace(&mut new_inner.memtable, Arc::new(MemTable::create(id)));
             // Insert the old memtable into the immutable memtables at the beginning
             new_inner.imm_memtables.insert(0, old_memtable);
         }

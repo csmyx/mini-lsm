@@ -92,7 +92,8 @@ impl MemTable {
         let key = Bytes::copy_from_slice(_key);
         let value = Bytes::copy_from_slice(_value);
         let size = key.len() + value.len();
-        self.approximate_size.fetch_add(size, std::sync::atomic::Ordering::Relaxed);
+        self.approximate_size
+            .fetch_add(size, std::sync::atomic::Ordering::Relaxed);
         self.map.insert(key, value);
         Ok(())
     }
