@@ -40,7 +40,7 @@ impl BlockIterator {
         iter
     }
 
-    fn parse_key_value(data: &[u8], offset: usize) -> (&[u8], (usize, usize)) {
+    fn parse_key_value_at(data: &[u8], offset: usize) -> (KeySlice, (usize, usize)) {
         let mut beg = offset;
         let mut end = beg + size_of::<u16>();
         debug_assert!(end <= data.len());
@@ -48,7 +48,13 @@ impl BlockIterator {
 
         beg = end;
         end = beg + key_len;
-        debug_assert!(end <= data.len());
+        debug_assert!(
+            end <= data.len(),
+            "beg = {}, end = {}, len = {}",
+            beg,
+            end,
+            data.len()
+        );
         let key = &data[beg..end];
 
         beg = end;
@@ -59,16 +65,16 @@ impl BlockIterator {
         beg = end;
         end = beg + value_len;
         debug_assert!(end <= data.len());
-        // let value = &data[beg..end];
 
-        (key, (beg, end))
+        (KeySlice::from_slice(key), (beg, end))
     }
 
     fn set_fisrt_key(&mut self) {
         self.first_key
-            .set_from_ref(Self::parse_key_value(&self.block.data, 0).0);
+            .set_from_slice(Self::parse_key_value_at(&self.block.data, 0).0);
     }
 
+    // Set key value pair to idx-th one
     fn set_key_value_at(&mut self, idx: usize) {
         // set key to empty to indicate having moved to an invalid position
         if idx >= self.block.offsets.len() {
@@ -78,16 +84,35 @@ impl BlockIterator {
         }
         self.idx = idx;
         let offset = self.block.offsets[idx] as usize;
-        let key_slice;
-        let value_range;
-        (key_slice, value_range) = Self::parse_key_value(&self.block.data, offset);
-        self.key.set_from_slice(KeySlice::from_slice(key_slice));
-        self.value_range = value_range;
+        let key;
+        (key, self.value_range) = Self::parse_key_value_at(&self.block.data, offset);
+        self.key.set_from_slice(key);
+    }
+
+    // Get the index of the first kay value pair who's key >= 'key'
+    fn get_idx_gt_eq(&self, key: KeySlice) -> usize {
+        let mut left = 0;
+        let mut right = self.block.offsets.len();
+        while left < right {
+            let mid = left + (right - left) / 2;
+            let current =
+                Self::parse_key_value_at(&self.block.data, self.block.offsets[mid] as usize).0;
+            if current < key {
+                left += 1;
+            } else {
+                right = mid;
+            }
+        }
+        // Notice: left will equal to offsets length when all keys in data < 'key'
+        left
     }
 
     /// Creates a block iterator and seek to the first key that >= `key`.
     pub fn create_and_seek_to_key(block: Arc<Block>, key: KeySlice) -> Self {
-        unimplemented!()
+        let mut iter = Self::new(block.clone());
+        iter.set_fisrt_key();
+        iter.set_key_value_at(iter.get_idx_gt_eq(key));
+        iter
     }
 
     /// Returns the key of the current entry.
@@ -120,5 +145,7 @@ impl BlockIterator {
     /// Seek to the first key that >= `key`.
     /// Note: You should assume the key-value pairs in the block are sorted when being added by
     /// callers.
-    pub fn seek_to_key(&mut self, key: KeySlice) {}
+    pub fn seek_to_key(&mut self, key: KeySlice) {
+        self.set_key_value_at(self.get_idx_gt_eq(key));
+    }
 }
