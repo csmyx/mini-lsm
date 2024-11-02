@@ -73,6 +73,6 @@ impl BlockBuilder {
     }
 
     fn added_size(key: &KeySlice, value: &[u8]) -> usize {
-        key.len() + value.len() + size_of::<u16>() * 3  /* for key_len value_len and offset */
+        key.len() + value.len() + size_of::<u16>() * 3 /* for key_len value_len and offset */
     }
 }
