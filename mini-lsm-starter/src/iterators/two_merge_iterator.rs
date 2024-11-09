@@ -77,14 +77,24 @@ impl<
                 self.b.next()?;
             }
             self.a.next()?;
-            if !self.a.is_valid() && self.b.is_valid() {
-                self.flag = 2;
-            }
         } else {
             self.b.next()?;
             if !self.b.is_valid() {
                 self.flag = 1;
             }
+        }
+        if self.a.is_valid() {
+            if self.b.is_valid() {
+                if self.a.key() <= self.b.key() {
+                    self.flag = 1;
+                } else {
+                    self.flag = 2;
+                }
+            } else {
+                self.flag = 1;
+            }
+        } else if self.b.is_valid() {
+            self.flag = 2;
         }
 
         Ok(())
