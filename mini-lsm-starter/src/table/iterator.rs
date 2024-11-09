@@ -38,11 +38,7 @@ impl SsTableIterator {
 
     /// Create a new iterator and seek to the first key-value pair which >= `key`.
     pub fn create_and_seek_to_key(table: Arc<SsTable>, key: KeySlice) -> Result<Self> {
-        // Try seek to the last block if the key is larger than the first key of all blocks
-        let blk_idx = min(
-            Self::get_idx_gt(table.clone(), key),
-            table.num_of_blocks() - 1,
-        );
+        let blk_idx = table.find_block_idx(key);
         let blk = table.read_block(blk_idx)?;
         let blk_iter = BlockIterator::create_and_seek_to_key(blk, key);
         Ok(Self {
@@ -56,11 +52,7 @@ impl SsTableIterator {
     /// Note: You probably want to review the handout for detailed explanation when implementing
     /// this function.
     pub fn seek_to_key(&mut self, key: KeySlice) -> Result<()> {
-        let mut blk_idx = Self::get_idx_gt(self.table.clone(), key);
-        // Try to seek in block whose next block's first key > 'key'
-        if blk_idx != 0 {
-            blk_idx -= 1;
-        }
+        let mut blk_idx = self.table.find_block_idx(key);
         debug_assert!(blk_idx < self.table.num_of_blocks());
         // Try to move to next block if the last key of current block < 'key'
         let last_key = self.table.block_meta[blk_idx].last_key.as_key_slice();
@@ -71,23 +63,6 @@ impl SsTableIterator {
         let blk = self.table.read_block(self.blk_idx)?;
         self.blk_iter = BlockIterator::create_and_seek_to_key(blk, key);
         Ok(())
-    }
-
-    /// Get the index of the first block who's key > 'key'
-    fn get_idx_gt(table: Arc<SsTable>, key: KeySlice) -> usize {
-        let mut left = 0;
-        let mut right = table.num_of_blocks();
-        while left < right {
-            let mid = left + (right - left) / 2;
-            let first_key = table.block_meta[mid].first_key.as_key_slice();
-            if first_key >= key {
-                right = mid;
-            } else {
-                left = mid + 1;
-            }
-        }
-        // Notice: left will equal to num_of_blocks when all first keys of blocks <= 'key'
-        left
     }
 }
 
