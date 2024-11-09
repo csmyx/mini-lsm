@@ -1,7 +1,6 @@
 #![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
-use std::cmp::min;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -19,7 +18,7 @@ pub struct SsTableIterator {
 impl SsTableIterator {
     /// Create a new iterator and seek to the first key-value pair in the first data block.
     pub fn create_and_seek_to_first(table: Arc<SsTable>) -> Result<Self> {
-        let blk = table.read_block(0)?;
+        let blk = table.read_block_cached(0)?;
         let blk_iter = BlockIterator::create_and_seek_to_first(blk);
         Ok(Self {
             table,
@@ -31,7 +30,7 @@ impl SsTableIterator {
     /// Seek to the first key-value pair in the first data block.
     pub fn seek_to_first(&mut self) -> Result<()> {
         self.blk_idx = 0;
-        let blk = self.table.read_block(0)?;
+        let blk = self.table.read_block_cached(0)?;
         self.blk_iter = BlockIterator::create_and_seek_to_first(blk);
         Ok(())
     }
@@ -39,7 +38,7 @@ impl SsTableIterator {
     /// Create a new iterator and seek to the first key-value pair which >= `key`.
     pub fn create_and_seek_to_key(table: Arc<SsTable>, key: KeySlice) -> Result<Self> {
         let blk_idx = table.find_block_idx(key);
-        let blk = table.read_block(blk_idx)?;
+        let blk = table.read_block_cached(blk_idx)?;
         let blk_iter = BlockIterator::create_and_seek_to_key(blk, key);
         Ok(Self {
             table,
@@ -60,7 +59,7 @@ impl SsTableIterator {
             blk_idx += 1;
         }
         self.blk_idx = blk_idx;
-        let blk = self.table.read_block(self.blk_idx)?;
+        let blk = self.table.read_block_cached(self.blk_idx)?;
         self.blk_iter = BlockIterator::create_and_seek_to_key(blk, key);
         Ok(())
     }
@@ -91,7 +90,7 @@ impl StorageIterator for SsTableIterator {
         if !self.blk_iter.is_valid() {
             self.blk_idx += 1;
             if self.blk_idx < self.table.num_of_blocks() {
-                let blk = self.table.read_block(self.blk_idx)?;
+                let blk = self.table.read_block_cached(self.blk_idx)?;
                 self.blk_iter = BlockIterator::create_and_seek_to_first(blk);
             }
         }
