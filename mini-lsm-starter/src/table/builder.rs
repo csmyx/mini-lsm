@@ -90,15 +90,16 @@ impl SsTableBuilder {
 
         // Encoding the SSTable
         let mut buf = self.data;
+        let block_meta_offset = buf.len();
         BlockMeta::encode_block_meta(&self.meta, &mut buf);
-        buf.put_u32(self.meta.len() as u32);
+        buf.put_u32(block_meta_offset as u32);
 
         Ok(SsTable {
             file: FileObject::create(path.as_ref(), buf)?,
             first_key: self.meta.first().unwrap().first_key.clone(),
             last_key: self.meta.last().unwrap().last_key.clone(),
             block_meta: self.meta,
-            block_meta_offset: 0,
+            block_meta_offset,
             id,
             block_cache,
             bloom: None,

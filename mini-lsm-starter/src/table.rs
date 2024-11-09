@@ -129,7 +129,29 @@ impl SsTable {
 
     /// Open SSTable from a file.
     pub fn open(id: usize, block_cache: Option<Arc<BlockCache>>, file: FileObject) -> Result<Self> {
-        unimplemented!()
+        let block_meta_offset = (&file.read(
+            file.size() - size_of::<u32>() as u64,
+            size_of::<u32>() as u64,
+        )?[..])
+            .get_u32() as usize;
+        let block_meta = file.read(
+            block_meta_offset as u64,
+            file.size() - size_of::<u32>() as u64 - block_meta_offset as u64,
+        )?;
+        let block_meta = BlockMeta::decode_block_meta(&block_meta[..]);
+        let first_key = block_meta.first().unwrap().first_key.clone();
+        let last_key = block_meta.last().unwrap().last_key.clone();
+        Ok(Self {
+            file,
+            block_meta,
+            block_meta_offset,
+            id,
+            block_cache,
+            first_key,
+            last_key,
+            bloom: None,
+            max_ts: 0,
+        })
     }
 
     /// Create a mock SST with only first key + last key metadata
@@ -154,7 +176,16 @@ impl SsTable {
 
     /// Read a block from the disk.
     pub fn read_block(&self, block_idx: usize) -> Result<Arc<Block>> {
-        unimplemented!()
+        debug_assert!(block_idx < self.block_meta.len());
+        let offset = self.block_meta[block_idx].offset as u64;
+        let len = if block_idx + 1 < self.num_of_blocks() {
+            self.block_meta[block_idx + 1].offset
+        } else {
+            self.block_meta_offset
+        } as u64
+            - offset;
+        let data = self.file.read(offset, len)?;
+        Ok(Arc::new(Block::decode(&data[..])))
     }
 
     /// Read a block from disk, with block cache. (Day 4)
