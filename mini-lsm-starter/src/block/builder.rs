@@ -33,7 +33,9 @@ impl BlockBuilder {
     /// Adds a key-value pair to the block. Returns false when the block is full.
     #[must_use]
     pub fn add(&mut self, key: KeySlice, value: &[u8]) -> bool {
-        if self.estimated_size() + Self::added_size(&key, value) > self.block_size && !self.is_empty() {
+        if self.estimated_size() + Self::added_size(&key, value) > self.block_size
+            && !self.is_empty()
+        {
             return false;
         }
 
@@ -69,7 +71,7 @@ impl BlockBuilder {
     fn estimated_size(&self) -> usize {
         return self.data.len() * size_of::<u8>()        /* for data */ 
                 + self.offsets.len() * size_of::<u16>() /* for offsets */
-                + size_of::<u16>();                     /* for number of elements */
+                + size_of::<u16>(); /* for number of elements */
     }
 
     fn added_size(key: &KeySlice, value: &[u8]) -> usize {
