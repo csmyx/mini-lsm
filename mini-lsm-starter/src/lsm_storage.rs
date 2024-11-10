@@ -283,8 +283,11 @@ impl LsmStorageInner {
 
     /// Get a key from the storage. In day 7, this can be further optimized by using a bloom filter.
     pub fn get(&self, _key: &[u8]) -> Result<Option<Bytes>> {
-        let state = self.state.read();
-        let opt = state.memtable.get(_key);
+        let snapshot = {
+            let guard = self.state.read();
+            Arc::clone(&guard)
+        }; // drop global lock here
+        let opt = snapshot.memtable.get(_key);
         if let Some(bytes) = opt {
             if !bytes.is_empty() {
                 return Ok(Some(bytes));
@@ -292,7 +295,7 @@ impl LsmStorageInner {
                 return Ok(None);
             }
         }
-        for imm in state.imm_memtables.iter() {
+        for imm in snapshot.imm_memtables.iter() {
             let opt = imm.get(_key);
             if let Some(bytes) = opt {
                 if !bytes.is_empty() {
@@ -300,6 +303,17 @@ impl LsmStorageInner {
                 } else {
                     return Ok(None);
                 }
+            }
+        }
+
+        for iter in snapshot.l0_sstables.iter() {
+            let table = snapshot.sstables[iter].clone();
+            let iter = SsTableIterator::create_and_seek_to_key(table, KeySlice::from_slice(_key))?;
+            if iter.is_valid() && iter.key().raw_ref() == _key {
+                if iter.value().is_empty() {
+                    return Ok(None);
+                }
+                return Ok(Some(Bytes::copy_from_slice(iter.value())));
             }
         }
         Ok(None)
