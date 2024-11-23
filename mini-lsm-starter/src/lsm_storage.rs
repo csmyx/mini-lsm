@@ -328,9 +328,9 @@ impl LsmStorageInner {
     pub fn put(&self, _key: &[u8], _value: &[u8]) -> Result<()> {
         let size;
         {
-            let state = self.state.read();
-            state.memtable.put(_key, _value)?;
-            size = state.memtable.approximate_size();
+            let guard = self.state.read();
+            guard.memtable.put(_key, _value)?;
+            size = guard.memtable.approximate_size();
         }
         self.try_freeze(size)
     }
@@ -375,12 +375,9 @@ impl LsmStorageInner {
 
     /// Force freeze the current memtable to an immutable memtable
     pub fn force_freeze_memtable(&self, _state_lock_observer: &MutexGuard<'_, ()>) -> Result<()> {
-        // move the memtable into the immmutable_memtable vector as it's first element, and set the memtable to a new empty Memtable, how to do it
         let mut state = self.state.write();
         let mut new_inner;
         {
-            // new_inner = state.deref().deref().clone();
-            // new_inner = state.deref().as_ref().clone();
             new_inner = state.as_ref().clone();
             let id = self.next_sst_id();
             let old_memtable =
@@ -394,23 +391,32 @@ impl LsmStorageInner {
 
     /// Force flush the earliest-created immutable memtable to disk
     pub fn force_flush_next_imm_memtable(&self) -> Result<()> {
+        let _lock = self.state_lock.lock();
         let mut builder = SsTableBuilder::new(self.options.block_size);
-        let mut state = self.state.write();
-        let mut snapshot = state.as_ref().clone();
-        if !snapshot.imm_memtables.is_empty() {
-            let memtable = snapshot.imm_memtables.pop().unwrap();
-            let mut iter = memtable.scan(Bound::Unbounded, Bound::Unbounded);
-            while iter.is_valid() {
-                builder.add(iter.key(), iter.value());
-                iter.next()?;
-            }
-            let id = self.next_sst_id();
-            let sstable =
-                builder.build(id, Some(self.block_cache.clone()), self.path_of_sst(id))?;
-            snapshot.l0_sstables.insert(0, sstable.sst_id());
-            snapshot.sstables.insert(sstable.sst_id(), sstable.into());
+        let memtable = {
+            let state = self.state.read();
+            state
+                .as_ref()
+                .imm_memtables
+                .last()
+                .expect("No imm memtable")
+                .clone()
+        };
+        let sst_id = self.next_sst_id();
+        memtable.flush(&mut builder)?;
+        let sstable = builder.build(
+            sst_id,
+            Some(self.block_cache.clone()),
+            self.path_of_sst(sst_id),
+        )?;
+        {
+            let mut state = self.state.write();
+            let mut snapshot = state.as_ref().clone();
+            snapshot.imm_memtables.pop();
+            snapshot.l0_sstables.insert(0, sst_id);
+            snapshot.sstables.insert(sst_id, sstable.into());
+            *state = Arc::new(snapshot);
         }
-        *state = Arc::new(snapshot);
         Ok(())
     }
 
