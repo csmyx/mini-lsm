@@ -447,26 +447,52 @@ impl LsmStorageInner {
         let mut table_iters = vec![];
         for sst_id in snapshot.l0_sstables.iter() {
             let table = snapshot.sstables[sst_id].clone();
-            let table_iter = match _lower {
-                Bound::Included(key) => {
-                    SsTableIterator::create_and_seek_to_key(table, KeySlice::from_slice(key))?
-                }
-                Bound::Excluded(key) => {
-                    let mut iter =
-                        SsTableIterator::create_and_seek_to_key(table, KeySlice::from_slice(key))?;
-                    if iter.is_valid() && iter.key().raw_ref() == key {
-                        iter.next()?;
+            if range_overlap(
+                _lower,
+                _upper,
+                table.first_key().raw_ref(),
+                table.last_key().raw_ref(),
+            ) {
+                let table_iter = match _lower {
+                    Bound::Included(key) => {
+                        SsTableIterator::create_and_seek_to_key(table, KeySlice::from_slice(key))?
                     }
-                    iter
-                }
-                Bound::Unbounded => SsTableIterator::create_and_seek_to_first(table)?,
-            };
-            table_iters.push(Box::new(table_iter));
+                    Bound::Excluded(key) => {
+                        let mut iter = SsTableIterator::create_and_seek_to_key(
+                            table,
+                            KeySlice::from_slice(key),
+                        )?;
+                        if iter.is_valid() && iter.key().raw_ref() == key {
+                            iter.next()?;
+                        }
+                        iter
+                    }
+                    Bound::Unbounded => SsTableIterator::create_and_seek_to_first(table)?,
+                };
+                table_iters.push(Box::new(table_iter));
+            }
         }
         let table_iters = MergeIterator::create(table_iters);
         let iter_inner = TwoMergeIterator::create(mem_iters, table_iters)?;
 
         let lsm_iter = LsmIterator::new(iter_inner, map_bound(_upper))?;
         Ok(FusedIterator::new(lsm_iter))
+    }
+}
+
+fn range_overlap(
+    lower: Bound<&[u8]>,
+    upper: Bound<&[u8]>,
+    first_key: &[u8],
+    last_key: &[u8],
+) -> bool {
+    (match lower {
+        Bound::Included(key) => key <= last_key,
+        Bound::Excluded(key) => key < last_key,
+        Bound::Unbounded => true,
+    }) && match upper {
+        Bound::Included(key) => key >= first_key,
+        Bound::Excluded(key) => key > first_key,
+        Bound::Unbounded => true,
     }
 }

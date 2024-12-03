@@ -26,7 +26,7 @@ enum CompactionStrategy {
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(long, default_value = "lsm.db")]
+    #[arg(long, default_value = "/tmp/lsm.db")]
     path: PathBuf,
     #[arg(long, default_value = "leveled")]
     compaction: CompactionStrategy,
