@@ -6,7 +6,9 @@ use bytes::BufMut;
 use std::path::Path;
 use std::sync::Arc;
 
-use super::{BlockMeta, FileObject, SsTable};
+use super::bloom::Bloom;
+use super::{BlockMeta, FileObject, SsTable, SsTableIterator};
+use crate::iterators::StorageIterator;
 use crate::key::KeyBytes;
 use crate::{block::BlockBuilder, key::KeySlice, lsm_storage::BlockCache};
 
@@ -18,6 +20,7 @@ pub struct SsTableBuilder {
     data: Vec<u8>,
     pub(crate) meta: Vec<BlockMeta>,
     block_size: usize,
+    key_hashes: Vec<u32>,
 }
 
 impl SsTableBuilder {
@@ -30,6 +33,7 @@ impl SsTableBuilder {
             data: Vec::new(),
             meta: Vec::new(),
             block_size,
+            key_hashes: Vec::new(),
         }
     }
 
@@ -38,6 +42,9 @@ impl SsTableBuilder {
     /// Note: You should split a new block when the current block is full.(`std::mem::replace` may
     /// be helpful here)
     pub fn add(&mut self, key: KeySlice, value: &[u8]) {
+        self.key_hashes
+            .push(farmhash::fingerprint32(key.into_inner()));
+
         if self.first_key.is_empty() {
             self.first_key.clear();
             self.first_key.extend_from_slice(key.into_inner());
@@ -94,6 +101,13 @@ impl SsTableBuilder {
         BlockMeta::encode_block_meta(&self.meta, &mut buf);
         buf.put_u32(block_meta_offset as u32);
 
+        let bits_per_key = Bloom::bloom_bits_per_key(self.key_hashes.len(), 0.01);
+        let bloom = Bloom::build_from_key_hashes(&self.key_hashes, bits_per_key);
+
+        let bloom_offset = buf.len();
+        bloom.encode(&mut buf);
+        buf.put_u32(bloom_offset as u32);
+
         Ok(SsTable {
             file: FileObject::create(path.as_ref(), buf)?,
             first_key: self.meta.first().unwrap().first_key.clone(),
@@ -102,7 +116,7 @@ impl SsTableBuilder {
             block_meta_offset,
             id,
             block_cache,
-            bloom: None,
+            bloom: Some(bloom),
             max_ts: 0,
         })
     }

@@ -128,14 +128,32 @@ impl SsTable {
 
     /// Open SSTable from a file.
     pub fn open(id: usize, block_cache: Option<Arc<BlockCache>>, file: FileObject) -> Result<Self> {
-        let block_meta_offset = (&file.read(
-            file.size() - size_of::<u32>() as u64,
+        let mut cur_offset = file.size(); // at file tail
+        let bloom_filter_offset = (&file.read(
+            cur_offset - size_of::<u32>() as u64,
             size_of::<u32>() as u64,
         )?[..])
             .get_u32() as usize;
+        cur_offset -= size_of::<u32>() as u64; // at bloom tail
+
+        dbg!(bloom_filter_offset, cur_offset - bloom_filter_offset as u64);
+        let raw_bloom = &file.read(
+            bloom_filter_offset as u64,
+            cur_offset - bloom_filter_offset as u64,
+        )?;
+        let bloom = Bloom::decode(&raw_bloom)?;
+        cur_offset = bloom_filter_offset as u64; // at bloom head
+
+        let block_meta_offset = (&file.read(
+            cur_offset - size_of::<u32>() as u64,
+            size_of::<u32>() as u64,
+        )?[..])
+            .get_u32() as usize;
+        cur_offset -= size_of::<u32>() as u64; // at block meta tail
+
         let block_meta = file.read(
             block_meta_offset as u64,
-            file.size() - size_of::<u32>() as u64 - block_meta_offset as u64,
+            cur_offset - block_meta_offset as u64,
         )?;
         let block_meta = BlockMeta::decode_block_meta(&block_meta[..]);
         let first_key = block_meta.first().unwrap().first_key.clone();
@@ -148,7 +166,7 @@ impl SsTable {
             block_cache,
             first_key,
             last_key,
-            bloom: None,
+            bloom: Some(bloom),
             max_ts: 0,
         })
     }

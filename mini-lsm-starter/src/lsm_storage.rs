@@ -306,8 +306,16 @@ impl LsmStorageInner {
             }
         }
 
-        for iter in snapshot.l0_sstables.iter() {
-            let table = snapshot.sstables[iter].clone();
+        for sst_id in snapshot.l0_sstables.iter() {
+            let table = snapshot.sstables[sst_id].clone();
+            // using bloom filter first
+            if let Some(ref bloom) = table.bloom {
+                let key_hash = farmhash::fingerprint32(&_key);
+                if !bloom.may_contain(key_hash) {
+                    continue;
+                }
+            }
+
             let iter = SsTableIterator::create_and_seek_to_key(table, KeySlice::from_slice(_key))?;
             if iter.is_valid() && iter.key().raw_ref() == _key {
                 if iter.value().is_empty() {
