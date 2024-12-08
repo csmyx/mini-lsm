@@ -30,6 +30,24 @@ impl BlockBuilder {
         }
     }
 
+    fn compute_prefix_len(&self, key: &KeySlice) -> usize {
+        let mut common_prefix = 0;
+        let mut i = 0;
+        let first_key = self.first_key.raw_ref();
+        let key = key.raw_ref();
+        loop {
+            if (i >= first_key.len()) || (i >= key.len()) {
+                break;
+            }
+            if first_key[i] != key[i] {
+                common_prefix = i;
+                break;
+            }
+            i += 1;
+        }
+        common_prefix
+    }
+
     /// Adds a key-value pair to the block. Returns false when the block is full.
     #[must_use]
     pub fn add(&mut self, key: KeySlice, value: &[u8]) -> bool {
@@ -48,8 +66,10 @@ impl BlockBuilder {
         self.offsets.push(self.data.len() as u16);
 
         // Put entry(key-value pair)
-        self.data.put_u16(key.len() as u16);
-        self.data.put(key.into_inner());
+        let prefix_size = self.compute_prefix_len(&key);
+        self.data.put_u16(prefix_size as u16);
+        self.data.put_u16((key.len() - prefix_size) as u16);
+        self.data.put(&key.raw_ref()[prefix_size..]);
         self.data.put_u16(value.len() as u16);
         self.data.put(value);
         return true;
